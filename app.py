@@ -93,8 +93,8 @@ def render_scene():
         total_frames = int(duration * fps)
 
         zoompan_filter = (
-            f"scale=8000:-1,"
-            f"zoompan=z='min(zoom+0.0007,1.3)':d={total_frames}:"
+            f"scale=1600:-1,"
+            f"zoompan=z='min(zoom+0.0015,1.3)':d={total_frames}:"
             f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
         )
 
@@ -114,13 +114,13 @@ def render_scene():
             "-i", audio_path,
             "-vf", vf,
             "-t", str(duration),
-            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "128k",
             "-shortest",
             output_path
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         if result.returncode != 0:
             return jsonify({"error": "ffmpeg failed", "details": result.stderr[-2000:]}), 500
 
