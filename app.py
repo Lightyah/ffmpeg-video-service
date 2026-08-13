@@ -61,25 +61,20 @@ def health():
 @require_api_key
 def render_scene():
     """
-    Expects JSON:
-    {
-      "image_url": "...",
-      "audio_url": "...",
-      "caption": "text to burn in",
-      "width": 1080,   (optional, default 1080)
-      "height": 1920   (optional, default 1920, i.e. 9:16)
-    }
+    Expects multipart/form-data:
+      image  - image file (binary)
+      audio  - audio file (binary)
+      caption - text field to burn in
+      width   - optional text field, default 1080
+      height  - optional text field, default 1920
     Returns: mp4 file
     """
-    data = request.get_json()
-    image_url = data.get("image_url")
-    audio_url = data.get("audio_url")
-    caption = data.get("caption", "")
-    width = data.get("width", 1080)
-    height = data.get("height", 1920)
+    if "image" not in request.files or "audio" not in request.files:
+        return jsonify({"error": "image and audio files are required (multipart/form-data)"}), 400
 
-    if not image_url or not audio_url:
-        return jsonify({"error": "image_url and audio_url are required"}), 400
+    caption = request.form.get("caption", "")
+    width = int(request.form.get("width", 1080))
+    height = int(request.form.get("height", 1920))
 
     work_id = str(uuid.uuid4())
     tmp_dir = tempfile.mkdtemp(prefix=f"scene_{work_id}_")
@@ -89,8 +84,8 @@ def render_scene():
         audio_path = os.path.join(tmp_dir, "audio.mp3")
         output_path = os.path.join(tmp_dir, "output.mp4")
 
-        download_file(image_url, image_path)
-        download_file(audio_url, audio_path)
+        request.files["image"].save(image_path)
+        request.files["audio"].save(audio_path)
 
         duration = get_audio_duration(audio_path)
         # Ken Burns: slow zoom in over the duration of the clip
@@ -139,24 +134,23 @@ def render_scene():
 @require_api_key
 def concatenate():
     """
-    Expects JSON:
-    { "video_urls": ["url1", "url2", ...] }
+    Expects multipart/form-data with multiple files under the field name "videos"
+    (send each scene video as a separate "videos" part, in order).
     Returns: final concatenated mp4
     """
-    data = request.get_json()
-    video_urls = data.get("video_urls", [])
+    files = request.files.getlist("videos")
 
-    if not video_urls or len(video_urls) < 1:
-        return jsonify({"error": "video_urls is required and must be non-empty"}), 400
+    if not files or len(files) < 1:
+        return jsonify({"error": "at least one file is required under field name 'videos'"}), 400
 
     work_id = str(uuid.uuid4())
     tmp_dir = tempfile.mkdtemp(prefix=f"concat_{work_id}_")
 
     try:
         local_paths = []
-        for i, url in enumerate(video_urls):
+        for i, file in enumerate(files):
             local_path = os.path.join(tmp_dir, f"part_{i}.mp4")
-            download_file(url, local_path)
+            file.save(local_path)
             local_paths.append(local_path)
 
         list_file = os.path.join(tmp_dir, "list.txt")
