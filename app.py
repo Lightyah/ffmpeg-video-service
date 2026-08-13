@@ -76,6 +76,8 @@ def render_scene():
     width = int(request.form.get("width", 1080))
     height = int(request.form.get("height", 1920))
 
+    print(f"[render-scene] request received, caption_len={len(caption)}", flush=True)
+
     work_id = str(uuid.uuid4())
     tmp_dir = tempfile.mkdtemp(prefix=f"scene_{work_id}_")
 
@@ -86,16 +88,18 @@ def render_scene():
 
         request.files["image"].save(image_path)
         request.files["audio"].save(audio_path)
+        print(f"[render-scene] files saved to {tmp_dir}", flush=True)
 
         duration = get_audio_duration(audio_path)
+        print(f"[render-scene] audio duration={duration}", flush=True)
         # Ken Burns: slow zoom in over the duration of the clip
-        fps = 25
+        fps = 20
         total_frames = int(duration * fps)
 
         zoompan_filter = (
-            f"scale=1600:-1,"
+            f"scale=800:-1,"
             f"zoompan=z='min(zoom+0.0015,1.3)':d={total_frames}:"
-            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
+            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps=20"
         )
 
         safe_caption = escape_text_for_drawtext(caption)
@@ -114,14 +118,17 @@ def render_scene():
             "-i", audio_path,
             "-vf", vf,
             "-t", str(duration),
-            "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-b:a", "128k",
+            "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "96k",
             "-shortest",
             output_path
         ]
 
+        print(f"[render-scene] starting ffmpeg, duration={duration}s, frames={total_frames}", flush=True)
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        print(f"[render-scene] ffmpeg finished, returncode={result.returncode}", flush=True)
         if result.returncode != 0:
+            print(f"[render-scene] ffmpeg stderr: {result.stderr[-2000:]}", flush=True)
             return jsonify({"error": "ffmpeg failed", "details": result.stderr[-2000:]}), 500
 
         return send_file(output_path, mimetype="video/mp4", as_attachment=True, download_name="scene.mp4")
